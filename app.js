@@ -11,7 +11,7 @@
       count: function (n) { return n + " مشروب"; }, none: "مفيش نتايج مطابقة",
       ingredients: "المكونات", steps: "طريقة التحضير", mistakes: "أخطاء شائعة", key: "نقطة مهمة",
       serving: "التقديم", dine: "صالة", take: "تيك أواي", ingredient: "المكوّن",
-      copy: "نسخ الرابط", copied: "تم نسخ الرابط", prev: "السابق", next: "التالي", close: "إغلاق",
+      pdf: "تحميل PDF", copy: "نسخ الرابط", copied: "تم نسخ الرابط", prev: "السابق", next: "التالي", close: "إغلاق",
       relatedMenu: "قريب من صنف المنيو: ", source: "المصدر", online: "بيانات من Google Sheet", embedded: "بيانات مدمجة",
       version: "الإصدار"
     },
@@ -22,7 +22,7 @@
       count: function (n) { return n + (n === 1 ? " drink" : " drinks"); }, none: "No matching drinks",
       ingredients: "Ingredients", steps: "Preparation", mistakes: "Common mistakes", key: "Key point",
       serving: "Serving", dine: "Dine-in", take: "Takeaway", ingredient: "Ingredient",
-      copy: "Copy link", copied: "Link copied", prev: "Previous", next: "Next", close: "Close",
+      pdf: "Download PDF", copy: "Copy link", copied: "Link copied", prev: "Previous", next: "Next", close: "Close",
       relatedMenu: "Similar to menu item: ", source: "Source", online: "Data from Google Sheet", embedded: "Built-in data",
       version: "Version"
     }
@@ -189,7 +189,7 @@
     if (r.link === "like" && r.menu) body += '<p class="nomenu">' + esc(t("relatedMenu")) + esc(menuName(r.menu)) + "</p>";
     body += '<div class="nav2"><button class="btn alt" type="button" data-nav="-1"' + (li <= 0 ? " disabled" : "") + ">" + (state.lang === "ar" ? "→ " : "← ") + esc(t("prev")) +
       '</button><button class="btn alt" type="button" data-nav="1"' + (li < 0 || li >= list.length - 1 ? " disabled" : "") + ">" + esc(t("next")) + (state.lang === "ar" ? " ←" : " →") + '</button>' +
-      '<button class="btn wide" type="button" data-copy>' + esc(t("copy")) + "</button></div>";
+      '<button class="btn" type="button" data-pdf>' + esc(t("pdf")) + '</button><button class="btn alt" type="button" data-copy>' + esc(t("copy")) + "</button></div>";
     var dlg = $("dlg");
     dlg.innerHTML = '<div class="sheet"><div class="sheet-head">' + head + '</div><div class="sheet-body">' + body + "</div></div>";
     if (!dlg.open) { try { dlg.showModal(); } catch (e) { dlg.setAttribute("open", ""); } }
@@ -201,6 +201,78 @@
     try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
   }
   function toast(msg) { var el = $("toast"); el.textContent = msg; el.classList.add("on"); clearTimeout(toast._t); toast._t = setTimeout(function () { el.classList.remove("on"); }, 1800); }
+
+  /* ---------------- PDF (print) — same layout as the recipe slide ---------------- */
+  var CAT_COLORS = { hot: ["#b8442c", "#f8e6e1"], iced: ["#1c7c9c", "#e4f0f3"], blended: ["#7a4a9e", "#efeaf4"] };
+  var CAT_LABEL = { hot: "HOT  •  ساخن", iced: "ICED  •  مثلج", blended: "BLENDED  •  بلند" };
+  var CAM = '<svg viewBox="0 0 24 24" width="44" height="44" fill="#5b6670"><path d="M9 3 7.2 5H4a2 2 0 00-2 2v11a2 2 0 002 2h16a2 2 0 002-2V7a2 2 0 00-2-2h-3.2L15 3zm3 5a5 5 0 110 10 5 5 0 010-10zm0 2a3 3 0 100 6 3 3 0 000-6z"/></svg>';
+  var WARN = '<svg viewBox="0 0 24 24" width="20" height="20"><path d="M12 2 1 21h22z" fill="#d9912c"/><path d="M11 9h2v6h-2zm0 7.5h2v2h-2z" fill="#fff"/></svg>';
+  var ICO_DINE = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v7a2 2 0 002 2v9M10 3v7M6 6h4M18 3c-2 1-3 4-3 7h3v11"/></svg>';
+  var ICO_TAKE = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h14l-1 12H6zM9 8V6a3 3 0 016 0v2"/></svg>';
+
+  function pTable(r) {
+    var head = '<tr><th class="c1">Ingredient<small>المكوّن</small></th>' + r.sizes.map(function (z) { return "<th>" + esc(z) + "</th>"; }).join("") + "</tr>";
+    var rows = r.ing.map(function (ing) {
+      var cells = [], v = ing.v || [], i = 0;
+      while (i < r.sizes.length) {
+        var span = 1; while (i + span < r.sizes.length && !v[i + span]) span++;
+        cells.push("<td" + (span > 1 ? ' colspan="' + span + '"' : "") + ">" + esc(v[i] || "") + "</td>"); i += span;
+      }
+      return '<tr><td class="c1">' + esc(ing.en || ing.ar) + (ing.ar && ing.en ? "<small>" + esc(ing.ar) + "</small>" : "") + "</td>" + cells.join("") + "</tr>";
+    }).join("");
+    return "<table>" + head + rows + "</table>";
+  }
+  function buildSlide(r) {
+    var c = CAT_COLORS[r.cat] || CAT_COLORS.hot, src = imgFor(r);
+    var photo = src ? '<img src="' + src + '" alt="">' : CAM + '<b>Final product photo</b><span>صورة المنتج النهائي</span>';
+    var enSteps = (r.stepsEn || []).map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("");
+    var arSteps = (r.stepsAr || []).map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("");
+    var mis = (r.misEn || []).map(function (x, i) { return "<li>" + (i + 1) + ". " + esc(x) + "<small>" + esc((r.misAr || [])[i] || "") + "</small></li>"; }).join("");
+    var sub = r.subEn ? '<div class="ps-sub">' + esc(r.subEn) + "</div>" : "";
+    return '<div class="ps" style="--ac:' + c[0] + ";--tint:" + c[1] + '">' +
+      '<div class="ps-chip">' + CAT_LABEL[r.cat] + "</div>" +
+      '<div class="ps-title"><h1>' + esc(r.en) + "</h1>" + sub + '</div><h1 class="ps-ar" dir="rtl">' + esc(r.ar) + "</h1>" +
+      '<img class="ps-logo" src="img/logo.png" alt="">' +
+      '<div class="ps-col ps-l">' + pTable(r) + '<div class="ps-key"><h3>Key point</h3><b>' + esc(r.keyEn) + '</b><span dir="rtl">' + esc(r.keyAr) + "</span></div></div>" +
+      '<div class="ps-col ps-m"><h3>Preparation</h3><ol>' + enSteps + '</ol><h3 class="ar" dir="rtl">طريقة التحضير</h3><ol dir="rtl" class="ar">' + arSteps + "</ol></div>" +
+      '<div class="ps-photo">' + photo + "</div>" +
+      '<div class="ps-mis"><h4>' + WARN + 'Common mistakes <i>•</i> <span dir="rtl">أخطاء شائعة</span></h4><ul>' + mis + "</ul></div>" +
+      '<div class="ps-box ps-dine"><h4><i class="ic">' + ICO_DINE + '</i>Dine-in <i>•</i> <span dir="rtl">صالة</span></h4><p>' + esc(r.dineEn) + '</p><p class="a" dir="rtl">' + esc(r.dineAr) + "</p></div>" +
+      '<div class="ps-box ps-take"><h4><i class="ic">' + ICO_TAKE + '</i>Takeaway <i>•</i> <span dir="rtl">تيك أواي</span></h4><p>' + esc(r.takeEn) + '</p><p class="a" dir="rtl">' + esc(r.takeAr) + "</p></div></div>";
+  }
+  function fitSlide(root) {
+    var rep = [];
+    root.querySelectorAll(".ps-l,.ps-m,.ps-mis").forEach(function (el) {
+      var lim = el.clientHeight, size = 14, tries = 0;
+      el.style.fontSize = size + "px";
+      while (el.scrollHeight > lim + 1 && size > 8 && tries++ < 20) { size -= 0.5; el.style.fontSize = size + "px"; }
+      rep.push({ cls: el.className, size: size, over: el.scrollHeight > lim + 1 });
+    });
+    return rep;
+  }
+  function waitImgs(root) {
+    return Promise.all(Array.prototype.map.call(root.querySelectorAll("img"), function (im) {
+      return im.complete ? Promise.resolve() : new Promise(function (ok) { im.onload = im.onerror = ok; });
+    }));
+  }
+  function mountSlide(r) {
+    var el = $("pslide");
+    if (!el) { el = document.createElement("div"); el.id = "pslide"; document.body.appendChild(el); }
+    el.innerHTML = buildSlide(r);
+    return el;
+  }
+  function printRecipe(id) {
+    var r = RECIPES.find(function (x) { return x.id === id; }); if (!r) return;
+    var el = mountSlide(r), old = document.title;
+    waitImgs(el).then(function () {
+      fitSlide(el);
+      document.title = (r.en + " - Recipe").replace(/[\\/:*?"<>|]+/g, " ");
+      var done = function () { document.title = old; window.removeEventListener("afterprint", done); };
+      window.addEventListener("afterprint", done);
+      setTimeout(function () { window.print(); }, 50);
+    });
+  }
+  window.__rg = { mountSlide: mountSlide, fitSlide: fitSlide, waitImgs: waitImgs, all: function () { return RECIPES; } };
 
   /* ---------------- events ---------------- */
   $("q").addEventListener("input", function (e) { state.q = e.target.value; $("clearQ").hidden = !state.q; renderList(); });
@@ -219,6 +291,7 @@
       if (list[i]) openRecipe(list[i].id);
       return;
     }
+    if (tg.closest("[data-pdf]")) return printRecipe(state.open);
     if (tg.closest("[data-copy]")) {
       var url = location.origin + location.pathname + "#" + state.open;
       (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject()).then(function () { toast(t("copied")); }, function () { toast(url); });
